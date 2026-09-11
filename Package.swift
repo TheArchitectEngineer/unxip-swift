@@ -1,37 +1,33 @@
 // swift-tools-version:6.0
 import PackageDescription
 
-#if os(macOS)
-	let dependencies = [Target.Dependency]()
-	let systemLibraries = [Target]()
-#else
-	let dependencies: [Target.Dependency] = [
-		.target(name: "GNUSource"),
-		.target(name: "getopt"),
-		.target(name: "zlib"),
-		.target(name: "lzma"),
-	]
-	let systemLibraries: [Target] = [
-		.systemLibrary(
-			name: "GNUSource"
-		),
-		.systemLibrary(
-			name: "getopt"
-		),
-		.systemLibrary(
-			name: "lzma",
-			providers: [
-				.aptItem(["liblzma-dev"])
-			]
-		),
-		.systemLibrary(
-			name: "zlib",
-			providers: [
-				.apt(["zlib1g-dev"])
-			]
-		),
-	]
-#endif
+let dependencies: [Target.Dependency] = [
+	.target(name: "GNUSource", condition: .when(platforms: [.linux, .android])),
+	.target(name: "getopt", condition: .when(platforms: [.linux])),
+	.target(name: "lzma", condition: .when(platforms: [.linux, .android])),
+	.target(name: "zlib", condition: .when(platforms: [.linux])),
+]
+	
+let systemLibraries: [Target] = [
+	.systemLibrary(
+		name: "GNUSource"
+	),
+	.systemLibrary(
+		name: "getopt"
+	),
+	.systemLibrary(
+		name: "lzma",
+		providers: [
+			.aptItem(["liblzma-dev"])
+		]
+	),
+	.systemLibrary(
+		name: "zlib",
+		providers: [
+			.apt(["zlib1g-dev"])
+		]
+	),
+]
 
 let package = Package(
 	name: "unxip",

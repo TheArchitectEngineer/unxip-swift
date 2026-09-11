@@ -1,5 +1,7 @@
 #if canImport(Glibc)
 	@preconcurrency import SwiftGlibc  // stdout, stderr
+#elseif canImport(Android)
+	@preconcurrency import Android  // stdout, stderr
 #else
 	@preconcurrency import unistd  // optind
 #endif
@@ -13,6 +15,10 @@ import Foundation
 	@preconcurrency import getopt  // optind
 	import lzma
 	import zlib
+#endif
+
+#if canImport(cpio)
+	import cpio
 #endif
 
 #if canImport(UIKit)  // Embedded, in other words
@@ -651,13 +657,13 @@ public struct File: Sendable {
 
 	public var type: Type {
 		// The types we care about, anyways
-		let typeMask = C_ISLNK | C_ISDIR | C_ISREG
-		switch CInt(mode) & typeMask {
-			case C_ISLNK:
+		let typeMask: mode_t = S_IFLNK | S_IFDIR | S_IFREG
+		switch mode_t(mode) & typeMask {
+			case S_IFLNK:
 				return .symlink
-			case C_ISDIR:
+			case S_IFDIR:
 				return .directory
-			case C_ISREG:
+			case S_IFREG:
 				return .regular
 			default:
 				fatalError("\(name) with \(mode) is a type that is unhandled")
@@ -1310,7 +1316,7 @@ public enum Files: StreamAperture {
 									repeat {
 										written = data.withUnsafeBytes { data in
 											measureFilesystemOperation(on: file, named: "pwrite") {
-												pwrite(fd, data.baseAddress, data.count, off_t(position))
+												pwrite(fd, data.baseAddress!, data.count, off_t(position))
 											}
 										}
 										if written < 0 {
@@ -1430,8 +1436,15 @@ extension AsyncSequence where Element: Sendable, AsyncIterator: Sendable, Self: 
 					Self.options.map {
 						option(name: $0.name, has_arg: no_argument, flag: nil, val: $0.flag)
 					} + [option(name: nil, has_arg: 0, flag: nil, val: 0)]
+
+				let arguments = UnsafeBufferPointer(start: CommandLine.unsafeArgv, count: Int(CommandLine.argc))
 				repeat {
-					let result = getopt_long(CommandLine.argc, CommandLine.unsafeArgv, Self.options.map(\.flag).reduce("", +), options, nil)
+					#if os(Android)
+						let _arguments = arguments.map { $0! }
+					#else
+						let _arguments = arguments.baseAddress!
+					#endif
+					let result = getopt_long(CommandLine.argc, _arguments, Self.options.map(\.flag).reduce("", +), options, nil)
 					guard result >= 0 else {
 						break
 					}
@@ -1453,16 +1466,16 @@ extension AsyncSequence where Element: Sendable, AsyncIterator: Sendable, Self: 
 					}
 				} while true
 
-				let arguments = UnsafeBufferPointer(start: CommandLine.unsafeArgv + Int(optind), count: Int(CommandLine.argc - optind)).map {
+				let remainder = arguments.dropFirst(Int(optind)).map {
 					String(cString: $0!)
 				}
 
-				guard let input = arguments.first else {
+				guard let input = remainder.first else {
 					Self.printUsage(nominally: false)
 				}
 
 				self.input = input == "-" ? nil : input
-				self.output = arguments.dropFirst().first
+				self.output = remainder.dropFirst().first
 			}
 
 			static func printVersion() -> Never {
